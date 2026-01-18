@@ -1,14 +1,15 @@
 import streamlit as st
+import asyncio
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.chat_models import ChatOpenAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from htmlTemplates import css, bot_template, user_template
-from langchain.llms import HuggingFaceHub
+
 
 def get_pdf_text(pdf_docs):
     text = ""
@@ -31,14 +32,20 @@ def get_text_chunks(text):
 
 
 def get_vectorstore(text_chunks):
-    embeddings = OpenAIEmbeddings()
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     # embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
     vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorstore
 
 
 def get_conversation_chain(vectorstore):
-    llm = ChatOpenAI()
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+    llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", convert_system_message_to_human=True)
     # llm = HuggingFaceHub(repo_id="google/flan-t5-xxl", model_kwargs={"temperature":0.5, "max_length":512})
 
     memory = ConversationBufferMemory(
@@ -52,6 +59,9 @@ def get_conversation_chain(vectorstore):
 
 
 def handle_userinput(user_question):
+    if st.session_state.conversation is None:
+        st.write("Please upload and process documents first!")
+        return
     response = st.session_state.conversation({'question': user_question})
     st.session_state.chat_history = response['chat_history']
 
